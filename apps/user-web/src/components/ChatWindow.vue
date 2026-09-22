@@ -41,6 +41,7 @@ import type { AgentPolicySnapshot } from '../api/auth'
 import { resolveArtifactIcon, resolveArtifactPresentation } from '../registries'
 import { resolveArtifactKind } from '../features/execution-v3/domain/artifactKind'
 import { authenticatedJsonHeaders } from '../api/authHeaders'
+import { agentResourceFamilyAvailable } from '../composables/useEnterpriseAccessPolicy'
 
 type ProjectPanelMode = 'changes' | 'files' | 'terminal' | 'file' | 'diff'
 const ProjectWorkspacePanel = defineAsyncComponent(() => import('./code/ProjectWorkspacePanel.vue'))
@@ -108,12 +109,10 @@ const allowBrowser = computed(() => props.agentPolicy?.capabilities.browser_auto
 const allowKnowledge = computed(() => props.agentPolicy?.capabilities.internal_knowledge !== false)
 const allowContent = computed(() => props.agentPolicy?.capabilities.content_generation !== false)
 const allowSkills = computed(() => {
-  const policy = props.agentPolicy
-  return !policy || policy.skillAccessMode === 'all' || policy.skillIds.length > 0
+  return agentResourceFamilyAvailable(props.agentPolicy, 'skill')
 })
 const allowTools = computed(() => {
-  const policy = props.agentPolicy
-  return !policy || policy.toolAccessMode === 'all' || policy.toolIds.length > 0
+  return agentResourceFamilyAvailable(props.agentPolicy, 'tool')
 })
 const emit = defineEmits<{
   (e: 'open-skills'): void

@@ -1,8 +1,21 @@
 import { computed, type Ref } from 'vue'
-import type { AgentCapabilityKey, TenantCandidate, UserProfile } from '../api/auth'
+import type { AgentCapabilityKey, AgentPolicySnapshot, TenantCandidate, UserProfile } from '../api/auth'
 
 export function agentCapabilityAllowed(profile: UserProfile | null, key: AgentCapabilityKey): boolean {
   return profile?.agentPolicy ? profile.agentPolicy.capabilities[key] !== false : true
+}
+
+export function agentResourceFamilyAvailable(
+  policy: AgentPolicySnapshot | null | undefined,
+  family: 'skill' | 'tool',
+): boolean {
+  if (!policy) return true
+  const mode = family === 'skill' ? policy.skillAccessMode : policy.toolAccessMode
+  // Missing mode means the deployment uses the newer per-resource permission
+  // contract. Resource APIs perform the actual filtering in that mode.
+  if (!mode || mode === 'all') return true
+  const ids = family === 'skill' ? policy.skillIds : policy.toolIds
+  return Array.isArray(ids) && ids.length > 0
 }
 
 export function tenantAdminAllowed(tenant: TenantCandidate): boolean {
@@ -19,12 +32,10 @@ export function useEnterpriseAccessPolicy(profile: Ref<UserProfile | null>) {
     return agentCapabilityAllowed(profile.value, key)
   })
   const canUseSkills = computed(() => {
-    const policy = agentPolicy.value
-    return !policy || policy.skillAccessMode === 'all' || policy.skillIds.length > 0
+    return agentResourceFamilyAvailable(agentPolicy.value, 'skill')
   })
   const canUseTools = computed(() => {
-    const policy = agentPolicy.value
-    return !policy || policy.toolAccessMode === 'all' || policy.toolIds.length > 0
+    return agentResourceFamilyAvailable(agentPolicy.value, 'tool')
   })
   const isEnterpriseSpace = computed(() => profile.value?.spaceType === 'enterprise')
   const isCommunity = computed(() => profile.value?.edition === 'community')

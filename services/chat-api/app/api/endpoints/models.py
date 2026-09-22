@@ -18,7 +18,8 @@ from app.llm.configured_models import (
 )
 from app.services.image_generation import generate_image_asset
 from app.llm.types import Message, Role
-from app.api.principal import require_api_principal
+from app.api.principal import ApiPrincipal, require_api_principal
+from app.product.extensions import get_product_extension
 
 router = APIRouter(dependencies=[Depends(require_api_principal)])
 
@@ -38,19 +39,48 @@ class ImageModelTestPayload(BaseModel):
 async def available_models(
     main_id: str = Query(default="default"),
     capability: str = Query(default="chat"),
+    principal: ApiPrincipal = Depends(require_api_principal),
 ) -> dict[str, Any]:
-    resolved_main_id = resolve_main_id(main_id)
+    resolved_main_id = (
+        principal.main_id
+        if isinstance(principal, ApiPrincipal) and principal.kind == "end_user"
+        else resolve_main_id(main_id)
+    )
     token = str(capability or "chat").strip() or "chat"
     if token == "chat":
         options = await list_chat_model_options(resolved_main_id)
     else:
         options = await list_model_options(resolved_main_id, capability=token)
+    policy = get_product_extension().model_access_policy
+    if policy is not None and isinstance(principal, ApiPrincipal) and principal.kind == "end_user":
+        options = await policy.filter_options(
+            main_id=resolved_main_id,
+            user_id=principal.user_id,
+            options=options,
+            capability=token,
+        )
     return {"code": 0, "data": options}
 
 
 @router.get("/models/images/available")
-async def available_image_models(main_id: str = Query(default="default")) -> dict[str, Any]:
-    options = await list_image_model_options(resolve_main_id(main_id))
+async def available_image_models(
+    main_id: str = Query(default="default"),
+    principal: ApiPrincipal = Depends(require_api_principal),
+) -> dict[str, Any]:
+    resolved_main_id = (
+        principal.main_id
+        if isinstance(principal, ApiPrincipal) and principal.kind == "end_user"
+        else resolve_main_id(main_id)
+    )
+    options = await list_image_model_options(resolved_main_id)
+    policy = get_product_extension().model_access_policy
+    if policy is not None and isinstance(principal, ApiPrincipal) and principal.kind == "end_user":
+        options = await policy.filter_options(
+            main_id=resolved_main_id,
+            user_id=principal.user_id,
+            options=options,
+            capability="image_generation",
+        )
     return {"code": 0, "data": options}
 
 

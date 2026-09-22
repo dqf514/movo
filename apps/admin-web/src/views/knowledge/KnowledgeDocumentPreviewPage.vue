@@ -144,14 +144,10 @@
                   <strong>{{ document?.chunkCount || 0 }}</strong>
                 </div>
               </div>
-              <ProductKnowledgeDocumentPermissions
-                v-if="ProductKnowledgeDocumentPermissions && document"
-                :document-id="document.id"
-              />
             </div>
           </section>
 
-          <section v-else class="chunks-card">
+          <section v-else-if="activePanel === 'chunks'" class="chunks-card">
             <div class="chunks-head">
               <div>
                 <div class="detail-card-title">{{ t('文档分段') }}</div>
@@ -269,6 +265,13 @@
               @update:page-size="handleChunkPageSizeChange"
             />
           </section>
+
+          <section v-else-if="activePanel === 'permissions'" class="permission-card">
+            <ProductKnowledgeDocumentPermissions
+              v-if="ProductKnowledgeDocumentPermissions && document"
+              :document-id="document.id"
+            />
+          </section>
         </section>
 
         <nav class="detail-rail" :aria-label="t('详情导航')">
@@ -292,6 +295,17 @@
           >
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16" /><path d="M4 12h16" /><path d="M4 18h10" /><path d="M3 4v4" /><path d="M3 10v4" /><path d="M3 16v4" /></svg>
             <span v-if="document?.chunkCount" class="rail-count">{{ document.chunkCount }}</span>
+          </button>
+          <button
+            v-if="ProductKnowledgeDocumentPermissions"
+            type="button"
+            class="rail-button"
+            :class="{ active: activePanel === 'permissions' }"
+            :title="t('文档权限')"
+            :aria-label="t('文档权限')"
+            @click="activePanel = 'permissions'"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="8" cy="15" r="4" /><path d="m11 12 8-8" /><path d="m16 7 2 2" /><path d="m14 9 2 2" /></svg>
           </button>
         </nav>
       </aside>
@@ -349,7 +363,7 @@ const isConverting = ref(false);
 const pollTimer = ref<number | null>(null);
 const downloading = ref(false);
 const headerTeleportReady = ref(false);
-const activePanel = ref<'detail' | 'chunks'>('detail');
+const activePanel = ref<'detail' | 'chunks' | 'permissions'>('detail');
 const ProductKnowledgeDocumentPermissions = adminProductUiExtension.knowledgeDocumentPermissions;
 const chunkStage = 'rag';
 const chunksLoading = ref(false);
@@ -1037,6 +1051,17 @@ watch(documentId, (next, previous) => {
   display: flex;
   flex-direction: column;
   padding: 14px;
+  border: 1px solid #e6ebf5;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 4px 14px rgba(16, 38, 84, 0.04);
+}
+
+.permission-card {
+  min-height: 0;
+  height: 100%;
+  overflow-y: auto;
+  padding: 16px;
   border: 1px solid #e6ebf5;
   border-radius: 8px;
   background: #fff;

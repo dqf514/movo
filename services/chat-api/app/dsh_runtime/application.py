@@ -33,6 +33,7 @@ from app.enterprise_capabilities.runtime import InternalCapabilityCatalog, Inter
 from app.enterprise_capabilities.runtime.adapters import build_default_registry
 from app.governance.position_policy import MongoEmployeePolicyResolver
 from app.services.presentation.execution import PresentationJobRepository
+from app.product.extensions import get_product_extension
 
 
 class DshRuntimeApplication:
@@ -106,7 +107,8 @@ class DshRuntimeApplication:
             ModelProfileCompiler(
                 MongoModelCatalog(),
                 ToolProfileCompiler(MongoToolCatalog(), internal_catalog, employee_policy),
-                SkillProfileCompiler(MongoSkillCatalog(employee_policy)),
+                SkillProfileCompiler(MongoSkillCatalog()),
+                get_product_extension().model_access_policy,
             ),
             store,
         )

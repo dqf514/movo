@@ -7,6 +7,7 @@ from app.dsh_runtime.profile.compiler import ModelProfileCompiler
 from app.dsh_runtime.profile.models import RuntimeProfileSnapshot
 from app.dsh_runtime.profile.synchronizer import ConversationProfileSynchronizer
 from app.dsh_runtime.profile.tools import ToolProfileCompiler
+from app.dsh_runtime.profile import tools as tools_module
 from app.dsh_runtime.profile.skills import SkillProfileCompiler
 from app.governance.position_policy import CAPABILITY_KEYS, EffectiveEmployeePolicy
 
@@ -192,20 +193,22 @@ class _CrmCatalog:
 
 
 class _MutablePolicyResolver:
-    def __init__(self) -> None:
-        self.allowed_tool_ids: tuple[str, ...] = ()
-
     async def resolve(self, tenant_id: str, user_id: str):
         return EffectiveEmployeePolicy(
             tenant_id=tenant_id,
             user_id=user_id,
             capabilities={key: True for key in CAPABILITY_KEYS},
-            tool_access_mode="selected",
-            tool_ids=frozenset(self.allowed_tool_ids),
         )
 
 
-def test_role_tool_grant_and_revoke_change_the_desired_profile_for_same_user() -> None:
+def test_resource_tool_grant_and_revoke_change_the_desired_profile_for_same_user(monkeypatch) -> None:
+    allowed_tool_ids: set[str] = set()
+
+    async def filter_ids(_resource_type, *, resource_ids, **_scope):
+        return set(resource_ids).intersection(allowed_tool_ids)
+
+    monkeypatch.setattr(tools_module, "filter_allowed_resource_ids", filter_ids)
+
     async def run() -> None:
         policy = _MutablePolicyResolver()
         compiler = ModelProfileCompiler(
@@ -218,7 +221,7 @@ def test_role_tool_grant_and_revoke_change_the_desired_profile_for_same_user() -
         )
         assert denied.tools == ()
 
-        policy.allowed_tool_ids = ("crm",)
+        allowed_tool_ids.add("crm")
         granted = await compiler.compile(
             tenant_id="tenant-a", user_id="user-a", model_instance_id="model-a",
         )
@@ -226,7 +229,7 @@ def test_role_tool_grant_and_revoke_change_the_desired_profile_for_same_user() -
         assert len(granted.tools) == 1
         assert granted.tools[0].external_tool_id == "crm"
 
-        policy.allowed_tool_ids = ()
+        allowed_tool_ids.clear()
         revoked = await compiler.compile(
             tenant_id="tenant-a", user_id="user-a", model_instance_id="model-a",
         )

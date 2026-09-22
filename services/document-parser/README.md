@@ -33,7 +33,7 @@ Install Docling parser support:
 .venv/bin/pip install --prefer-binary -r requirements-docling.txt
 ```
 
-The Docling requirements are pinned to the version set verified for this service. The standard Docker image also downloads the layout, table and RapidOCR model assets at build time and runs with Hugging Face offline mode enabled, so customer deployments do not download models on first document upload.
+The Docling requirements are pinned to the version set verified for this service. The standard Docker image also downloads the layout, table, and Chinese/English RapidOCR model assets at build time and validates the bilingual OCR pipeline before the image is published. It runs with Hugging Face offline mode enabled, so customer deployments do not download models on first document upload.
 
 When Docling is not installed, the worker uses lightweight fallback parsers for TXT/Markdown/CSV/JSON, DOCX and text-based PDF files. Other formats fail with a clear task error until Docling is available.
 

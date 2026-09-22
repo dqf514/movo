@@ -23,7 +23,7 @@ from app.llm.factory import get_llm_client
 from app.llm.types import Message, Role
 from app.utils.oss_uploader import AliyunOSSUploader
 from app.utils.uploads import read_upload_with_limit
-from app.governance.position_policy import MongoEmployeePolicyResolver
+from app.product.resource_access import filter_allowed_resource_ids
 from app.api.principal import require_api_principal
 
 import yaml as _yaml
@@ -1993,7 +1993,17 @@ async def list_selectable_skills(
         org_skills = await organization_skill_adapter.list_runtime_skills(main_id=resolved_main_id)
     except Exception:
         org_skills = []
-    policy = await MongoEmployeePolicyResolver().resolve(resolved_main_id, user_id)
+    organization_ids = [
+        str(skill.get("id") or skill.get("_id") or "").strip()
+        for skill in org_skills or []
+        if isinstance(skill, dict)
+    ]
+    allowed_organization_ids = await filter_allowed_resource_ids(
+        "skill",
+        main_id=resolved_main_id,
+        user_id=user_id,
+        resource_ids=organization_ids,
+    )
 
     items: List[Dict[str, Any]] = []
     seen: set[str] = set()
@@ -2003,7 +2013,7 @@ async def list_selectable_skills(
         if not _safe_bool(skill.get("enabled"), _safe_bool(skill.get("is_active"), True)):
             continue
         skill_id = str(skill.get("id") or skill.get("_id") or "").strip()
-        if _skill_source_scope(skill) == "organization" and not policy.allows_skill(skill_id):
+        if _skill_source_scope(skill) == "organization" and skill_id not in allowed_organization_ids:
             continue
         if not skill_id or skill_id in seen:
             continue

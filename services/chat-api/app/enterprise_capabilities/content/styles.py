@@ -5,6 +5,7 @@ from typing import Any
 from app.enterprise_capabilities.content.style_contract_renderer import build_writer_style_contract
 from app.services.org_skill_adapter import organization_skill_adapter
 from app.services.skills import user_skill_service
+from app.product.resource_access import filter_allowed_resource_ids
 
 
 def is_writing_style(skill: dict[str, Any]) -> bool:
@@ -24,7 +25,17 @@ async def _available_skills(*, tenant_id: str, user_id: str) -> list[dict[str, A
         organization = await organization_skill_adapter.list_runtime_skills(main_id=tenant_id)
     except Exception:
         organization = []
-    return [dict(item) for item in list(personal or []) + list(organization or []) if isinstance(item, dict)]
+    allowed_organization_ids = await filter_allowed_resource_ids(
+        "skill",
+        main_id=tenant_id,
+        user_id=user_id,
+        resource_ids=(str(item.get("id") or "") for item in organization or [] if isinstance(item, dict)),
+    )
+    visible_organization = [
+        item for item in organization or []
+        if isinstance(item, dict) and str(item.get("id") or "") in allowed_organization_ids
+    ]
+    return [dict(item) for item in list(personal or []) + visible_organization if isinstance(item, dict)]
 
 
 async def require_writing_style(*, skill_id: str, tenant_id: str, user_id: str) -> dict[str, Any]:

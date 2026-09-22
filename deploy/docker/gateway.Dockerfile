@@ -1,3 +1,3 @@
-FROM nginx:1.29.8-alpine
-
-RUN apk upgrade --no-cache
+# Keep this runtime aligned with both web images. The Debian/glibc variant avoids
+# the Alpine musl pwritev2 path rejected by older container hosts.
+FROM nginx:1.31.5-trixie

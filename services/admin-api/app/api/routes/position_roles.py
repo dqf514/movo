@@ -10,7 +10,6 @@ from app.core.db import get_db
 from app.position_roles.constants import AGENT_CAPABILITY_KEYS, MIGRATION_COLLECTION, POSITION_ROLE_COLLECTION, USER_OVERRIDE_COLLECTION, USER_ROLE_COLLECTION
 from app.position_roles.service import PositionRoleService
 from app.position_roles.repository import utcnow
-from app.services.organization_tools import organization_tool_query
 
 router = APIRouter()
 
@@ -20,10 +19,6 @@ class PositionRolePayload(BaseModel):
     description: str = Field(default="", max_length=1000)
     status: str = Field(default="active", pattern=r"^(active|disabled)$")
     capabilities: dict[str, bool] = Field(default_factory=dict)
-    toolAccessMode: str = Field(default="selected", pattern=r"^(all|selected)$")
-    toolIds: list[str] = Field(default_factory=list)
-    skillAccessMode: str = Field(default="selected", pattern=r"^(all|selected)$")
-    skillIds: list[str] = Field(default_factory=list)
 
 
 class RoleCopyPayload(BaseModel):
@@ -48,10 +43,6 @@ class BulkRoleAssignmentPayload(BaseModel):
 class CapabilityOverridePayload(BaseModel):
     allowCapabilities: list[str] = Field(default_factory=list)
     denyCapabilities: list[str] = Field(default_factory=list)
-    allowToolIds: list[str] = Field(default_factory=list)
-    denyToolIds: list[str] = Field(default_factory=list)
-    allowSkillIds: list[str] = Field(default_factory=list)
-    denySkillIds: list[str] = Field(default_factory=list)
     effectiveAt: datetime | None = None
     expiresAt: datetime | None = None
     reason: str = Field(min_length=1, max_length=1000)
@@ -104,18 +95,6 @@ async def update_role_status(role_id: str, payload: RoleStatusPayload, current_u
 async def delete_role(role_id: str, current_user: dict = Depends(get_current_admin_user)) -> dict[str, bool]:
     await PositionRoleService().delete_role(_main_id(current_user), role_id, _actor(current_user))
     return {"success": True}
-
-
-@router.get("/catalog/resources")
-async def resource_catalog(current_user: dict = Depends(get_current_admin_user)) -> dict[str, Any]:
-    main_id = _main_id(current_user)
-    db = get_db()
-    tools = await db.external_tools.find(organization_tool_query(main_id, status="active")).sort("name", 1).to_list(length=5000)
-    skills = await db.skills.find({"main_id": main_id, "enabled": True}).sort("name", 1).to_list(length=5000)
-    return {
-        "tools": [{"id": str(row.get("_id")), "name": row.get("name", ""), "type": row.get("type", "http")} for row in tools],
-        "skills": [{"id": str(row.get("_id")), "name": row.get("name", ""), "type": row.get("type", "")} for row in skills],
-    }
 
 
 @router.get("/assignments/pending")
@@ -188,11 +167,6 @@ async def create_override(user_id: str, payload: CapabilityOverridePayload, curr
         raise HTTPException(status_code=400, detail="包含未知的 Agent 能力")
     if set(payload.allowCapabilities) & set(payload.denyCapabilities):
         raise HTTPException(status_code=400, detail="同一能力不能同时允许和禁止")
-    await PositionRoleService().validate_resource_ids(
-        main_id,
-        list(dict.fromkeys(payload.allowToolIds + payload.denyToolIds)),
-        list(dict.fromkeys(payload.allowSkillIds + payload.denySkillIds)),
-    )
     import uuid
     override_id = uuid.uuid4().hex
     doc = {
@@ -202,10 +176,6 @@ async def create_override(user_id: str, payload: CapabilityOverridePayload, curr
         "status": "active",
         "allow_capabilities": payload.allowCapabilities,
         "deny_capabilities": payload.denyCapabilities,
-        "allow_tool_ids": payload.allowToolIds,
-        "deny_tool_ids": payload.denyToolIds,
-        "allow_skill_ids": payload.allowSkillIds,
-        "deny_skill_ids": payload.denySkillIds,
         "effective_at": effective_at,
         "expires_at": expires_at,
         "reason": payload.reason,
@@ -229,10 +199,6 @@ async def list_user_overrides(user_id: str, current_user: dict = Depends(get_cur
         "status": "expired" if str(row.get("status") or "active") == "active" and row.get("expires_at") and _aware_utc(row.get("expires_at")) <= now else str(row.get("status") or "active"),
         "allowCapabilities": list(row.get("allow_capabilities") or []),
         "denyCapabilities": list(row.get("deny_capabilities") or []),
-        "allowToolIds": list(row.get("allow_tool_ids") or []),
-        "denyToolIds": list(row.get("deny_tool_ids") or []),
-        "allowSkillIds": list(row.get("allow_skill_ids") or []),
-        "denySkillIds": list(row.get("deny_skill_ids") or []),
         "effectiveAt": row.get("effective_at").isoformat() if row.get("effective_at") else "",
         "expiresAt": row.get("expires_at").isoformat() if row.get("expires_at") else "",
         "reason": str(row.get("reason") or ""),

@@ -15,6 +15,7 @@ from app.integrations.callbacks.admin_api_client import post_callback
 from app.integrations.converters.libreoffice import convert_legacy_office_to_modern
 from app.integrations.storage import get_storage_adapter
 from app.repositories.job_repository import mark_job_succeeded, update_job_progress
+from app.services.pdf_ocr_policy import PdfOcrPolicy, inspect_pdf_ocr_policy
 from app.services.rag_chunk_optimizer import RagChunkOptions, build_rag_chunks
 
 logger = logging.getLogger(__name__)
@@ -111,7 +112,8 @@ def parse_document(path: Path, filename: str) -> ParsedDocument:
     except ImportError:
         return parse_with_fallback(path, ext)
     else:
-        converter = _build_docling_converter(ext)
+        pdf_ocr_policy = inspect_pdf_ocr_policy(path) if ext == "pdf" else None
+        converter = _build_docling_converter(ext, pdf_ocr_policy=pdf_ocr_policy)
         try:
             result = converter.convert(str(path))
         except Exception:
@@ -124,12 +126,12 @@ def parse_document(path: Path, filename: str) -> ParsedDocument:
             raw = document.export_to_dict()
         except Exception:
             raw = {"parser": "docling", "markdown": markdown}
-        image_ocr_pages = _pdf_image_ocr_pages(path) if ext == "pdf" else set()
+        image_ocr_pages = set(pdf_ocr_policy.image_ocr_pages) if pdf_ocr_policy else set()
         raw_chunks = chunk_docling_document(document, image_ocr_pages=image_ocr_pages)
         return ParsedDocument(markdown=markdown, raw=raw, raw_chunks=raw_chunks)
 
 
-def _build_docling_converter(ext: str) -> Any:
+def _build_docling_converter(ext: str, *, pdf_ocr_policy: PdfOcrPolicy | None = None) -> Any:
     if ext != "pdf":
         from docling.document_converter import DocumentConverter  # type: ignore
 
@@ -157,11 +159,16 @@ def _build_docling_converter(ext: str) -> Any:
     pipeline_options = pdf_pipeline_options()
     pipeline_options.do_ocr = True
     pipeline_options.ocr_options = RapidOcrOptions(
-        force_full_page_ocr=True,
+        force_full_page_ocr=bool(pdf_ocr_policy and pdf_ocr_policy.force_full_page_ocr),
         lang=["chinese", "english"],
         backend="onnxruntime",
     )
-    logger.info("Using RapidOCR/onnxruntime for PDF parsing")
+    logger.info(
+        "Using RapidOCR/onnxruntime for PDF parsing (force_full_page_ocr=%s, pages=%s, image_ocr_pages=%s)",
+        bool(pdf_ocr_policy and pdf_ocr_policy.force_full_page_ocr),
+        pdf_ocr_policy.page_count if pdf_ocr_policy else 0,
+        sorted(pdf_ocr_policy.image_ocr_pages) if pdf_ocr_policy else [],
+    )
     return DocumentConverter(
         format_options={
             InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline_options),
@@ -248,26 +255,6 @@ def chunk_docling_document(document: Any, *, image_ocr_pages: set[int] | None = 
             }
         )
     return chunks
-
-
-def _pdf_image_ocr_pages(path: Path) -> set[int]:
-    """Identify scanned pages that have no meaningful native PDF text layer."""
-    try:
-        from pypdf import PdfReader  # type: ignore
-
-        reader = PdfReader(str(path))
-    except Exception:
-        return set()
-
-    image_pages: set[int] = set()
-    for page_number, page in enumerate(reader.pages, start=1):
-        try:
-            native_text = re.sub(r"\s+", "", page.extract_text() or "")
-        except Exception:
-            native_text = ""
-        if len(native_text) < 20:
-            image_pages.add(page_number)
-    return image_pages
 
 
 def _docling_table_row_chunks(

@@ -18,10 +18,12 @@ class ModelProfileCompiler:
         catalog: ModelCatalog,
         tool_compiler: ToolProfileCompiler | None = None,
         skill_compiler: SkillProfileCompiler | None = None,
+        model_access_policy: Any | None = None,
     ) -> None:
         self._catalog = catalog
         self._tool_compiler = tool_compiler
         self._skill_compiler = skill_compiler
+        self._model_access_policy = model_access_policy
 
     async def compile(
         self,
@@ -30,7 +32,15 @@ class ModelProfileCompiler:
         user_id: str = "",
         model_instance_id: str | None = None,
     ) -> RuntimeProfileSnapshot:
-        instance, provider = await self._catalog.resolve(tenant_id, model_instance_id)
+        authorized_model_id = model_instance_id
+        if self._model_access_policy is not None and user_id:
+            authorized_model_id = await self._model_access_policy.resolve_model_id(
+                main_id=tenant_id,
+                user_id=user_id,
+                model_id=model_instance_id,
+                capability="chat",
+            )
+        instance, provider = await self._catalog.resolve(tenant_id, authorized_model_id)
         self._validate(instance, provider, tenant_id)
         raw_capabilities = instance.get("capabilities", [])
         if isinstance(raw_capabilities, str):

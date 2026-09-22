@@ -6,8 +6,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
 from app.services.external_tools import external_tool_registry, external_tool_service
-from app.governance.position_policy import MongoEmployeePolicyResolver
-from app.api.principal import require_api_principal
+from app.api.principal import ApiPrincipal, require_api_principal
+from app.product.resource_access import filter_allowed_resource_ids, resource_is_allowed
 
 router = APIRouter(dependencies=[Depends(require_api_principal)])
 
@@ -50,13 +50,6 @@ def _require_user_id(user_id: str) -> str:
     return uid
 
 
-async def _require_tool_access(main_id: str, user_id: str, tool_id: str | None = None):
-    policy = await MongoEmployeePolicyResolver().resolve(main_id, user_id)
-    if tool_id is not None and not policy.allows_external_tool(tool_id):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="当前岗位未开通该工具")
-    return policy
-
-
 @router.get("/external-tools/my", response_model=ApiResponse)
 async def list_user_external_tools(
     user_id: str = Query("", alias="userId"),
@@ -64,8 +57,6 @@ async def list_user_external_tools(
 ) -> ApiResponse:
     uid = _require_user_id(user_id)
     data = await external_tool_service.list(main_id, scope="user", owner_user_id=uid)
-    policy = await _require_tool_access(main_id, uid)
-    data = [row for row in data if policy.allows_external_tool(str(row.get("id") or row.get("_id") or ""))]
     return ApiResponse(data=data)
 
 
@@ -76,9 +67,6 @@ async def create_user_external_tool(
     main_id: str = Query("default", alias="mainId"),
 ) -> ApiResponse:
     uid = _require_user_id(user_id)
-    policy = await _require_tool_access(main_id, uid)
-    if policy.tool_access_mode != "all":
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="当前岗位不能创建新的工具连接")
     try:
         data = await external_tool_service.create(payload.model_dump(), main_id, scope="user", owner_user_id=uid)
     except ValueError as exc:
@@ -93,7 +81,6 @@ async def get_user_external_tool(
     main_id: str = Query("default", alias="mainId"),
 ) -> ApiResponse:
     uid = _require_user_id(user_id)
-    await _require_tool_access(main_id, uid, tool_id)
     data = await external_tool_service.get(tool_id, main_id, scope="user", owner_user_id=uid)
     if not data:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="工具连接不存在")
@@ -108,7 +95,6 @@ async def update_user_external_tool(
     main_id: str = Query("default", alias="mainId"),
 ) -> ApiResponse:
     uid = _require_user_id(user_id)
-    await _require_tool_access(main_id, uid, tool_id)
     try:
         data = await external_tool_service.update(tool_id, payload.model_dump(), main_id, scope="user", owner_user_id=uid)
     except ValueError as exc:
@@ -126,7 +112,6 @@ async def patch_user_external_tool(
     main_id: str = Query("default", alias="mainId"),
 ) -> ApiResponse:
     uid = _require_user_id(user_id)
-    await _require_tool_access(main_id, uid, tool_id)
     try:
         data = await external_tool_service.update(tool_id, payload, main_id, scope="user", owner_user_id=uid)
     except ValueError as exc:
@@ -143,7 +128,6 @@ async def delete_user_external_tool(
     main_id: str = Query("default", alias="mainId"),
 ) -> ApiResponse:
     uid = _require_user_id(user_id)
-    await _require_tool_access(main_id, uid, tool_id)
     ok = await external_tool_service.delete(tool_id, main_id, scope="user", owner_user_id=uid)
     if not ok:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="工具连接不存在")
@@ -151,13 +135,33 @@ async def delete_user_external_tool(
 
 
 @router.get("/external-tools/registry", response_model=ApiResponse)
-async def list_external_tool_registry(main_id: str = Query("default", alias="mainId")) -> ApiResponse:
+async def list_external_tool_registry(
+    main_id: str = Query("default", alias="mainId"),
+    principal: ApiPrincipal = Depends(require_api_principal),
+) -> ApiResponse:
     data = await external_tool_registry.list_enabled_descriptors(main_id)
+    if principal.kind == "end_user":
+        allowed = await filter_allowed_resource_ids(
+            "tool",
+            main_id=principal.main_id,
+            user_id=principal.user_id,
+            resource_ids=(str(item.get("id") or item.get("_id") or "") for item in data),
+        )
+        data = [item for item in data if str(item.get("id") or item.get("_id") or "") in allowed]
     return ApiResponse(data=data)
 
 
 @router.post("/external-tools/{tool_id}/test", response_model=ApiResponse)
-async def test_external_tool(tool_id: str, payload: ToolTestPayload, main_id: str = Query("default", alias="mainId")) -> ApiResponse:
+async def test_external_tool(
+    tool_id: str,
+    payload: ToolTestPayload,
+    main_id: str = Query("default", alias="mainId"),
+    principal: ApiPrincipal = Depends(require_api_principal),
+) -> ApiResponse:
+    if principal.kind == "end_user" and not await resource_is_allowed(
+        "tool", main_id=principal.main_id, user_id=principal.user_id, resource_id=tool_id,
+    ):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="当前用户无权使用该工具")
     try:
         data = await external_tool_service.test(tool_id, payload.input, main_id)
     except ValueError as exc:
@@ -173,7 +177,6 @@ async def test_user_external_tool(
     main_id: str = Query("default", alias="mainId"),
 ) -> ApiResponse:
     uid = _require_user_id(user_id)
-    await _require_tool_access(main_id, uid, tool_id)
     data = await external_tool_service.test(tool_id, payload.input, main_id, scope="user", owner_user_id=uid)
     return ApiResponse(data=data)
 
@@ -185,7 +188,15 @@ async def test_draft_external_tool(payload: ToolDraftTestPayload, main_id: str =
 
 
 @router.post("/external-tools/{tool_id}/discover", response_model=ApiResponse)
-async def discover_mcp_tools(tool_id: str, main_id: str = Query("default", alias="mainId")) -> ApiResponse:
+async def discover_mcp_tools(
+    tool_id: str,
+    main_id: str = Query("default", alias="mainId"),
+    principal: ApiPrincipal = Depends(require_api_principal),
+) -> ApiResponse:
+    if principal.kind == "end_user" and not await resource_is_allowed(
+        "tool", main_id=principal.main_id, user_id=principal.user_id, resource_id=tool_id,
+    ):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="当前用户无权使用该 MCP 服务")
     try:
         data = await external_tool_service.discover_mcp_tools(tool_id, main_id)
     except ValueError as exc:
@@ -200,7 +211,6 @@ async def discover_user_mcp_tools(
     main_id: str = Query("default", alias="mainId"),
 ) -> ApiResponse:
     uid = _require_user_id(user_id)
-    await _require_tool_access(main_id, uid, tool_id)
     try:
         data = await external_tool_service.discover_mcp_tools(tool_id, main_id, scope="user", owner_user_id=uid)
     except ValueError as exc:

@@ -37,6 +37,10 @@ jobs:
           python-version: "3.11"
       - name: Validate publication boundary
         run: python scripts/check_open_source_hygiene.py
+      - name: Validate web runtime baseline
+        run: |
+          python scripts/check_web_runtime_baseline.py
+          python -m unittest scripts/release/test_web_runtime_baseline.py
       - name: Validate selective container release planner
         run: python scripts/release/test_plan_container_release.py
       - name: Validate Compose variants

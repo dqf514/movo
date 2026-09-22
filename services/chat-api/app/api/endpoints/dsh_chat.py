@@ -211,6 +211,11 @@ async def _start_chat_completions(
             status_code=409,
             detail={"code": "session_already_running", "message": str(exc), "session_id": conversation_id},
         ) from exc
+    except PermissionError as exc:
+        raise HTTPException(
+            status_code=403,
+            detail={"code": "model_access_denied", "message": str(exc)},
+        ) from exc
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
@@ -258,6 +263,11 @@ async def desktop_runtime_profile(
             user_id=user_id,
             model_instance_id=str(payload.model_id or "").strip() or None,
         )
+    except PermissionError as exc:
+        raise HTTPException(
+            status_code=403,
+            detail={"code": "model_access_denied", "message": str(exc)},
+        ) from exc
     except (LookupError, ValueError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return ApiResponse(code=0, message="ok", data={

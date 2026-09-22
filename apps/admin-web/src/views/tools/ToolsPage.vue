@@ -126,7 +126,20 @@
 
               <div class="card-footrow">
                 <div class="card-footnote">{{ t('最近测试：') }}{{ formatAdminDateTime(row.lastTestAt, row.lastTestMessage || t('暂无记录')) }}</div>
-                <n-button size="small" tertiary type="error" @click.stop="askRemove(row)">{{ t('删除') }}</n-button>
+                <div class="card-actions">
+                  <n-button v-if="toolAccessExtension" class="icon-only-btn" size="small" quaternary circle :title="t('使用权限')" @click.stop="openAccess(row)">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="7" r="4" /><path d="M5.5 21a6.5 6.5 0 0 1 13 0" /></svg>
+                  </n-button>
+                  <n-button class="icon-only-btn delete-btn" size="small" quaternary circle :title="t('删除工具连接')" @click.stop="askRemove(row)">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M3 6h18" />
+                      <path d="M8 6V4h8v2" />
+                      <path d="M6 6l1 14h10l1-14" />
+                      <path d="M10 11v6" />
+                      <path d="M14 11v6" />
+                    </svg>
+                  </n-button>
+                </div>
               </div>
             </div>
           </div>
@@ -161,6 +174,10 @@
       {{ t('确定删除「{name}」吗？删除后不可恢复。', { name: pendingDeleteRow?.name || t('未命名工具') }) }}
     </n-modal>
 
+    <n-modal v-if="toolAccessExtension" v-model:show="accessVisible" preset="card" :title="t('{name} · 使用权限', { name: accessTool?.name || t('未命名工具') })" style="width: min(760px, calc(100vw - 32px))">
+      <ResourceAccessExtensionPanel v-if="accessVisible && accessTool" :resource-id="accessTool.id" :extension="toolAccessExtension" />
+    </n-modal>
+
     <n-modal
       v-model:show="statusConfirmVisible"
       preset="dialog"
@@ -184,6 +201,8 @@ import { t } from '@/composables/i18n';
 import { formatAdminDateTime } from '@/composables/adminTimezone';
 import { deleteTool, fetchTools, patchTool, type ExternalToolItem, type TestStatus, type ToolStatus, type ToolType } from '@/api/tools';
 import { mcpActivationError, toolStatusConfirmText } from '@/utils/toolActivation';
+import ResourceAccessExtensionPanel from '@/components/resources/ResourceAccessExtensionPanel.vue';
+import adminProductUiExtension from '@movo-admin-product-extension';
 
 const router = useRouter();
 const message = useMessage();
@@ -197,6 +216,9 @@ const statusConfirmVisible = ref(false);
 const pendingStatusRow = ref<ExternalToolItem | null>(null);
 const pendingStatusValue = ref(false);
 const pendingStatusText = ref('');
+const toolAccessExtension = adminProductUiExtension.toolAccess;
+const accessVisible = ref(false);
+const accessTool = ref<ExternalToolItem | null>(null);
 
 const filters = ref({
   keyword: '',
@@ -254,6 +276,11 @@ function goCreate(type: ToolType) {
 
 function goEdit(id: string) {
   router.push(`/tools/${id}/edit`);
+}
+
+function openAccess(row: ExternalToolItem) {
+  accessTool.value = row;
+  accessVisible.value = true;
 }
 
 async function loadRows() {
@@ -589,21 +616,26 @@ onMounted(loadRows);
   white-space: nowrap;
 }
 
-.card-footrow :deep(.n-button[type="error"]),
-.card-footrow :deep(.n-button--error-type) {
-  opacity: 0;
-  pointer-events: none;
-  transform: translateX(4px);
-  transition:
-    opacity 0.16s ease,
-    transform 0.16s ease;
+.card-actions {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
 }
 
-.tool-card:hover .card-footrow :deep(.n-button[type="error"]),
-.tool-card:hover .card-footrow :deep(.n-button--error-type) {
-  opacity: 1;
-  pointer-events: auto;
-  transform: translateX(0);
+.icon-only-btn :deep(svg) {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.delete-btn:hover {
+  color: #d03050;
 }
 
 .empty-shell {

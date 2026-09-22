@@ -63,10 +63,12 @@ export type AgentCapabilityKey =
 
 export type AgentPolicySnapshot = {
   capabilities: Record<AgentCapabilityKey, boolean>
-  toolAccessMode: 'all' | 'selected'
-  toolIds: string[]
-  skillAccessMode: 'all' | 'selected'
-  skillIds: string[]
+  // Legacy aggregate resource gates. Enterprise deployments now resolve
+  // Skill and tool access per resource, so newer snapshots may omit them.
+  toolAccessMode?: 'all' | 'selected'
+  toolIds?: string[]
+  skillAccessMode?: 'all' | 'selected'
+  skillIds?: string[]
   roleIds: string[]
   roleNames: string[]
   migrationPending?: boolean

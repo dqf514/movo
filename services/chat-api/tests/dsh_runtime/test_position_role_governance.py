@@ -7,15 +7,11 @@ from app.enterprise_capabilities.runtime import InternalCapabilityCatalog
 from app.governance.position_policy import CAPABILITY_KEYS, EffectiveEmployeePolicy, build_effective_policy
 
 
-def _role(role_id: str, *, capabilities=None, tool_mode="selected", tool_ids=None, skill_mode="selected", skill_ids=None):
+def _role(role_id: str, *, capabilities=None):
     return {
         "_id": role_id,
         "name": role_id,
         "capabilities": capabilities or {},
-        "tool_access_mode": tool_mode,
-        "tool_ids": tool_ids or [],
-        "skill_access_mode": skill_mode,
-        "skill_ids": skill_ids or [],
     }
 
 
@@ -23,61 +19,36 @@ def test_existing_employee_without_position_role_keeps_explicit_migration_access
     policy = build_effective_policy("tenant", "user", [])
     assert policy.migration_pending is True
     assert all(policy.capabilities[key] for key in CAPABILITY_KEYS)
-    assert policy.tool_access_mode == "all"
-    assert policy.skill_access_mode == "all"
 
 
 def test_employee_with_only_disabled_or_missing_assigned_role_does_not_fall_back_to_full_access() -> None:
     policy = build_effective_policy("tenant", "user", [], assigned_role_ids=["disabled-role"])
     assert policy.migration_pending is False
     assert not any(policy.capabilities.values())
-    assert policy.tool_access_mode == "selected"
-    assert policy.skill_access_mode == "selected"
 
 
 def test_roleless_employee_is_denied_after_migration_is_completed() -> None:
     policy = build_effective_policy("tenant", "user", [], migration_completed=True)
     assert policy.migration_pending is False
     assert not any(policy.capabilities.values())
-    assert policy.tool_access_mode == "selected"
-    assert policy.skill_access_mode == "selected"
 
 
-def test_multiple_roles_union_resources_and_global_denies_win() -> None:
+def test_multiple_roles_union_macro_capabilities_and_global_denies_win() -> None:
     roles = [
-        _role("marketing", capabilities={"content_generation": True}, tool_ids=["crm"], skill_ids=["writer"]),
-        _role("developer", capabilities={"code_generation": True}, tool_mode="all", skill_mode="all"),
+        _role("marketing", capabilities={"content_generation": True}),
+        _role("developer", capabilities={"code_generation": True}),
     ]
     overrides = [
-        {"_id": "allow", "allow_capabilities": ["browser_automation"], "allow_tool_ids": ["temporary"]},
+        {"_id": "allow", "allow_capabilities": ["browser_automation"]},
         {
             "_id": "deny",
             "deny_capabilities": ["browser_automation", "code_generation"],
-            "deny_tool_ids": ["crm"],
-            "deny_skill_ids": ["writer"],
         },
     ]
     policy = build_effective_policy("tenant", "user", roles, overrides)
     assert policy.allows_capability("content_generation") is True
     assert policy.allows_capability("browser_automation") is False
     assert policy.allows_capability("code_generation") is False
-    assert policy.allows_external_tool("temporary") is True
-    assert policy.allows_external_tool("anything-else") is True
-    assert policy.allows_external_tool("crm") is False
-    assert policy.allows_skill("anything-else") is True
-    assert policy.allows_skill("writer") is False
-
-
-def test_organization_skill_adapter_id_matches_admin_role_resource_id() -> None:
-    policy = build_effective_policy(
-        "tenant", "user", [_role("employee", skill_ids=["workflow-raw-id"])],
-    )
-    assert policy.allows_skill("org_skill:workflow-raw-id") is True
-    denied = build_effective_policy(
-        "tenant", "user", [_role("employee", skill_ids=["workflow-raw-id"])],
-        [{"_id": "deny", "deny_skill_ids": ["workflow-raw-id"]}],
-    )
-    assert denied.allows_skill("org_skill:workflow-raw-id") is False
 
 
 class _EmptyCatalog:

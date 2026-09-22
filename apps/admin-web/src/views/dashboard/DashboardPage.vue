@@ -64,7 +64,8 @@
                 <span class="health-dot" aria-hidden="true"></span>
                 <strong>{{ overview?.billing.orgName || t('组织空间') }}</strong>
               </div>
-              <n-tag size="small" :bordered="false" :type="isCommunity ? 'success' : 'info'">{{ tierLabel }}</n-tag>
+              <component :is="ProductDashboardEditionBadge" v-if="ProductDashboardEditionBadge" />
+              <n-tag v-else size="small" :bordered="false" :type="editionTagType">{{ productEditionLabel }}</n-tag>
             </div>
             <div class="deployment-status">
               <strong>{{ healthLabel }}</strong>
@@ -230,6 +231,12 @@ const recentActivity = computed(() => overview.value?.recentActivity || []);
 const visibleRecentActivity = computed(() => recentActivity.value.slice(0, 4));
 const healthStatus = computed<HealthStatus>(() => overview.value?.health.status || 'healthy');
 const isCommunity = computed(() => overview.value?.billing.edition === 'community');
+const ProductDashboardEditionBadge = adminProductUiExtension.dashboardEditionBadge;
+const productEditionLabel = computed(() => {
+  const extensionLabel = adminProductUiExtension.productEditionLabel;
+  return extensionLabel ? t(extensionLabel) : tierLabel.value;
+});
+const editionTagType = computed(() => adminProductUiExtension.productEditionTagType || (isCommunity.value ? 'success' : 'info'));
 const tierLabel = computed(() => {
   if (isCommunity.value) return t('社区版');
   const tier = overview.value?.billing.tier;

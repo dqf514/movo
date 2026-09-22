@@ -45,6 +45,10 @@ jobs:
         run: python -m compileall -q services/chat-api/app services/chat-api/scripts services/admin-api/app services/document-parser/app
       - name: Open-source hygiene guard
         run: python scripts/check_open_source_hygiene.py
+      - name: Web runtime baseline guard
+        run: |
+          python scripts/check_web_runtime_baseline.py
+          python -m unittest scripts/release/test_web_runtime_baseline.py
       - name: DSH Legacy Runtime Boundary Guard
         run: python services/chat-api/scripts/check_dsh_legacy_runtime_boundary.py
       - name: DSH Native Code Boundary Guard

@@ -13,6 +13,7 @@ from app.dsh_runtime.tool_gateway import ToolGatewayClaims
 from app.dsh_runtime.events.turn_channel import TurnEventRegistry
 from app.services.external_tools import external_tool_service
 from app.governance.position_policy import EmployeePolicyResolver
+from app.product.resource_access import resource_is_allowed
 from app.services.presentation.execution import PresentationJobRepository
 
 from app.enterprise_capabilities.runtime import CapabilityExecutionContext, InternalCapabilityService
@@ -482,7 +483,12 @@ class EnterpriseToolService:
             allowed = (
                 current_policy.allows_internal(str(tool.capability_ref or ""))
                 if tool.source_type == "internal"
-                else current_policy.allows_external_tool(str(tool.external_tool_id or ""))
+                else await resource_is_allowed(
+                    "tool",
+                    main_id=claims.tenant_id,
+                    user_id=claims.user_id,
+                    resource_id=str(tool.external_tool_id or ""),
+                )
             )
             if not allowed:
                 await self._repository.audit(
@@ -490,7 +496,7 @@ class EnterpriseToolService:
                     user_id=claims.user_id,
                     action_id="policy-denied",
                     event="capability.denied",
-                    details={"tool_name": tool.name, "reason": "position_role"},
+                    details={"tool_name": tool.name, "reason": "resource_access"},
                 )
                 raise ToolPolicyDenied("当前岗位未开通该能力，本次任务未执行")
         binding = await self._repository.session_binding(session_id)

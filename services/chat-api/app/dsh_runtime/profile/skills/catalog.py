@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from typing import Any, Protocol
 
-from app.governance.position_policy import EmployeePolicyResolver
 from app.services.org_skill_adapter import organization_skill_adapter
 from app.services.skills import user_skill_service
 from app.core.db import get_db
+from app.product.resource_access import filter_allowed_resource_ids
 
 
 class SkillCatalog(Protocol):
@@ -15,13 +15,15 @@ class SkillCatalog(Protocol):
 
 
 class MongoSkillCatalog:
-    def __init__(self, policy_resolver: EmployeePolicyResolver | None = None) -> None:
-        self._policy_resolver = policy_resolver
-
     async def list_enabled(self, tenant_id: str, user_id: str) -> list[dict[str, Any]]:
         personal = await user_skill_service.list_skills(user_id, main_id=tenant_id)
         organization = await organization_skill_adapter.list_runtime_skills(main_id=tenant_id)
-        policy = await self._policy_resolver.resolve(tenant_id, user_id) if self._policy_resolver else None
+        allowed_organization_ids = await filter_allowed_resource_ids(
+            "skill",
+            main_id=tenant_id,
+            user_id=user_id,
+            resource_ids=(str(item.get("id") or "") for item in organization if isinstance(item, dict)),
+        )
         rows: list[dict[str, Any]] = []
         seen: set[str] = set()
         for item in [*personal, *organization]:
@@ -33,7 +35,7 @@ class MongoSkillCatalog:
             if item.get("enabled", item.get("is_active", True)) is False:
                 continue
             is_organization = str(item.get("visibility") or "").lower() == "organization" or str(item.get("source") or "") == "org_db"
-            if is_organization and policy is not None and not policy.allows_skill(source_id):
+            if is_organization and source_id not in allowed_organization_ids:
                 continue
             seen.add(source_id)
             rows.append(dict(item))

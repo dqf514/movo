@@ -17,6 +17,7 @@ export default defineConfig(({ command }) => ({
       '@movo-admin-product-extension': productExtensionPath,
       '@movo-admin-web': path.resolve(__dirname, './src'),
       'vue': path.resolve(__dirname, './node_modules/vue'),
+      'vue-router': path.resolve(__dirname, './node_modules/vue-router'),
       'naive-ui': path.resolve(__dirname, './node_modules/naive-ui'),
       'axios': path.resolve(__dirname, './node_modules/axios'),
     },

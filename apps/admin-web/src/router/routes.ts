@@ -11,6 +11,9 @@ import { SkillsManagerIcon } from '@/icons/SkillsManagerIcon';
 import { SettingsIcon } from '@/icons/SettingsIcon';
 import { PositionRolesIcon } from '@/icons/PositionRolesIcon';
 import { SystemAuditIcon } from '@/icons/SystemAuditIcon';
+import adminProductUiExtension from '@movo-admin-product-extension';
+
+const productRoutes = adminProductUiExtension.routes ?? [];
 
 export const appRoutes: RouteRecordRaw[] = [
   {
@@ -145,6 +148,7 @@ export const appRoutes: RouteRecordRaw[] = [
         component: () => import('@/views/organizations/TrafficAllocationsPage.vue'),
         meta: { title: '流量分配', icon: TrafficAllocationIcon, menuGroup: 'organizations' },
       },
+      ...productRoutes,
       {
         path: '/organizations',
         redirect: '/organizations/accounts',

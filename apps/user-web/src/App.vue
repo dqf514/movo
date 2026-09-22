@@ -675,6 +675,12 @@ async function syncDesktopAgentIdentity(token: string, userId: string | number |
 }
 
 function handleLoginSuccess(payload: { token: string; username: string; profile?: UserProfile }) {
+  // Authentication is complete once a token is returned. Close the dialog
+  // before running optional cleanup and persistence so those follow-up tasks
+  // can never leave an authenticated user stuck on the verifying state.
+  authToken.value = payload.token
+  currentAccount.value = payload.username
+  loginOpen.value = false
   clearUserBoundProjectState(true)
   if (typeof window !== 'undefined') {
     const url = new URL(window.location.href)
@@ -688,20 +694,29 @@ function handleLoginSuccess(payload: { token: string; username: string; profile?
       window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`)
     }
   }
-  localStorage.setItem(authTokenKey, payload.token)
-  localStorage.setItem(authAccountKey, payload.username)
-  authToken.value = payload.token
-  currentAccount.value = payload.username
+  try {
+    localStorage.setItem(authTokenKey, payload.token)
+    localStorage.setItem(authAccountKey, payload.username)
+  } catch (error) {
+    console.warn('[auth] failed to persist login credentials', error)
+  }
   billingSummary.value = null
   billingSummaryLoaded.value = false
-  persistSavedUsers(payload.username)
+  try {
+    persistSavedUsers(payload.username)
+  } catch (error) {
+    console.warn('[auth] failed to persist login history', error)
+  }
   // Prefer profile that came back inline with the login response. Falling
   // back to the (sometimes-broken) SSO clientAuth call only when the login
   // didn't give us a userId.
   if (payload.profile && payload.profile.userId !== undefined && payload.profile.userId !== null) {
     userProfile.value = payload.profile
-    localStorage.setItem(authUserProfileKey, JSON.stringify(payload.profile))
-    loginOpen.value = false
+    try {
+      localStorage.setItem(authUserProfileKey, JSON.stringify(payload.profile))
+    } catch (error) {
+      console.warn('[auth] failed to persist user profile', error)
+    }
     startLocalSession()
     loadSessions(true).catch(() => {})
     void syncDesktopAgentIdentity(payload.token, payload.profile.userId).then(() => {

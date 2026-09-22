@@ -6,10 +6,8 @@ import {
   createCapabilityOverride,
   listCapabilityOverrides,
   revokeCapabilityOverride,
-  roleResourceCatalog,
   type AgentCapabilityKey,
   type CapabilityOverride,
-  type RoleResource,
 } from '@/api/positionRoles';
 import { formatAdminDateTime } from '@/composables/adminTimezone';
 
@@ -19,16 +17,10 @@ const message = useMessage();
 const loading = ref(false);
 const saving = ref(false);
 const overrides = ref<CapabilityOverride[]>([]);
-const tools = ref<RoleResource[]>([]);
-const skills = ref<RoleResource[]>([]);
 const expiresAt = ref<number | null>(Date.now() + 7 * 24 * 60 * 60 * 1000);
 const reason = ref('');
 const allowCapabilities = ref<AgentCapabilityKey[]>([]);
 const denyCapabilities = ref<AgentCapabilityKey[]>([]);
-const allowToolIds = ref<string[]>([]);
-const allowSkillIds = ref<string[]>([]);
-const denyToolIds = ref<string[]>([]);
-const denySkillIds = ref<string[]>([]);
 
 const capabilityOptions = [
   { label: t('内容生成'), value: 'content_generation' },
@@ -37,17 +29,11 @@ const capabilityOptions = [
   { label: t('浏览器自动运行'), value: 'browser_automation' },
   { label: t('内部知识检索'), value: 'internal_knowledge' },
 ];
-const toolOptions = computed(() => tools.value.map(item => ({ label: `${item.name} · ${item.type}`, value: item.id })));
-const skillOptions = computed(() => skills.value.map(item => ({ label: `${item.name} · ${item.type || 'Skill'}`, value: item.id })));
-const hasChange = computed(() => allowCapabilities.value.length + denyCapabilities.value.length + allowToolIds.value.length + denyToolIds.value.length + allowSkillIds.value.length + denySkillIds.value.length > 0);
+const hasChange = computed(() => allowCapabilities.value.length + denyCapabilities.value.length > 0);
 
 function resetDraft() {
   allowCapabilities.value = [];
   denyCapabilities.value = [];
-  allowToolIds.value = [];
-  allowSkillIds.value = [];
-  denyToolIds.value = [];
-  denySkillIds.value = [];
   expiresAt.value = Date.now() + 7 * 24 * 60 * 60 * 1000;
   reason.value = '';
 }
@@ -56,10 +42,7 @@ async function load() {
   if (!props.userId) return;
   loading.value = true;
   try {
-    const [rows, catalog] = await Promise.all([listCapabilityOverrides(props.userId), roleResourceCatalog()]);
-    overrides.value = rows;
-    tools.value = catalog.tools;
-    skills.value = catalog.skills;
+    overrides.value = await listCapabilityOverrides(props.userId);
   } finally { loading.value = false; }
 }
 
@@ -72,10 +55,6 @@ async function save() {
     await createCapabilityOverride(props.userId, {
       allowCapabilities: allowCapabilities.value,
       denyCapabilities: denyCapabilities.value,
-      allowToolIds: allowToolIds.value,
-      denyToolIds: denyToolIds.value,
-      allowSkillIds: allowSkillIds.value,
-      denySkillIds: denySkillIds.value,
       effectiveAt: new Date().toISOString(),
       expiresAt: new Date(expiresAt.value).toISOString(),
       reason: reason.value.trim(),
@@ -106,12 +85,6 @@ watch(() => props.show, (visible) => { if (visible) void load(); });
         <n-grid :cols="2" :x-gap="14">
           <n-grid-item><n-form-item :label="t('临时增加能力')"><n-select v-model:value="allowCapabilities" multiple :options="capabilityOptions.filter(item => !denyCapabilities.includes(item.value as AgentCapabilityKey))" /></n-form-item></n-grid-item>
           <n-grid-item><n-form-item :label="t('临时限制能力')"><n-select v-model:value="denyCapabilities" multiple :options="capabilityOptions.filter(item => !allowCapabilities.includes(item.value as AgentCapabilityKey))" /></n-form-item></n-grid-item>
-        </n-grid>
-        <n-grid :cols="2" :x-gap="14">
-          <n-grid-item><n-form-item :label="t('临时允许的 MCP / 工具')"><n-select v-model:value="allowToolIds" multiple filterable max-tag-count="responsive" :options="toolOptions.filter(item => !denyToolIds.includes(item.value))" /></n-form-item></n-grid-item>
-          <n-grid-item><n-form-item :label="t('临时禁止的 MCP / 工具')"><n-select v-model:value="denyToolIds" multiple filterable max-tag-count="responsive" :options="toolOptions.filter(item => !allowToolIds.includes(item.value))" /></n-form-item></n-grid-item>
-          <n-grid-item><n-form-item :label="t('临时允许的 Skill')"><n-select v-model:value="allowSkillIds" multiple filterable max-tag-count="responsive" :options="skillOptions.filter(item => !denySkillIds.includes(item.value))" /></n-form-item></n-grid-item>
-          <n-grid-item><n-form-item :label="t('临时禁止的 Skill')"><n-select v-model:value="denySkillIds" multiple filterable max-tag-count="responsive" :options="skillOptions.filter(item => !allowSkillIds.includes(item.value))" /></n-form-item></n-grid-item>
         </n-grid>
         <n-grid :cols="2" :x-gap="14">
           <n-grid-item><n-form-item :label="t('失效时间')" required><n-date-picker v-model:value="expiresAt" type="datetime" clearable style="width:100%" /></n-form-item></n-grid-item>

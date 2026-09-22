@@ -6,6 +6,13 @@ import { useRoute, useRouter } from 'vue-router';
 import { OrganizationUsersIcon } from '@/icons/OrganizationUsersIcon';
 import { appRoutes } from '@/router/routes';
 import { useLocale, t } from '@/composables/i18n';
+import adminProductUiExtension from '@movo-admin-product-extension';
+
+const builtInGroups = [{
+  key: 'organizations',
+  label: '组织与用户',
+  icon: OrganizationUsersIcon,
+}];
 
 function renderMenuIcon(icon: unknown) {
   if (typeof icon === 'string') {
@@ -39,30 +46,31 @@ function buildOptions() {
   const children = (root?.children ?? []) as RouteRecordRaw[];
   const visibleRoutes = children.filter((route: RouteRecordRaw) => !route.meta?.hideInMenu && route.path);
   const options: MenuOption[] = [];
-  let orgMenuAdded = false;
+  const groups = [...builtInGroups, ...(adminProductUiExtension.menuGroups ?? [])];
+  const groupOptions = new Map<string, MenuOption>();
+
+  const ensureGroup = (key: string) => {
+    const existing = groupOptions.get(key);
+    if (existing) return existing;
+    const definition = groups.find((item) => item.key === key);
+    if (!definition) return null;
+    const option: MenuOption = {
+      key: `/${key}-group`,
+      label: t(definition.label),
+      icon: () => renderMenuIcon(definition.icon),
+      children: [],
+    };
+    groupOptions.set(key, option);
+    return option;
+  };
 
   for (const route of visibleRoutes) {
     const routePath = route.path as string;
-    if (route.meta?.menuGroup === 'organizations') {
-      if (!orgMenuAdded) {
-        orgMenuAdded = true;
-        options.push({
-          key: '/organizations-group',
-          label: t('组织与用户'),
-          icon: () =>
-            h(
-              NIcon,
-              {
-                class: 'menu-symbol',
-              },
-              {
-                default: () => h(OrganizationUsersIcon),
-              },
-            ),
-          children: [],
-        });
-      }
-      const group = options.find((item) => item.key === '/organizations-group');
+    const menuGroup = typeof route.meta?.menuGroup === 'string' ? route.meta.menuGroup : '';
+    if (menuGroup) {
+      const group = ensureGroup(menuGroup);
+      if (!group) continue;
+      if (!options.includes(group)) options.push(group);
       const childrenOptions = ((group?.children as MenuOption[] | undefined) || []);
       childrenOptions.push({
         key: routePath,
@@ -95,13 +103,19 @@ export function useMenuOptions() {
     return buildOptions();
   });
 
-  const expandedKeys = ref<string[]>(route.path.startsWith('/organizations') ? ['/organizations-group'] : []);
+  const routeGroupKey = () => {
+    const group = route.meta?.menuGroup;
+    return typeof group === 'string' && group ? `/${group}-group` : '';
+  };
+  const initialGroupKey = routeGroupKey();
+  const expandedKeys = ref<string[]>(initialGroupKey ? [initialGroupKey] : []);
 
   watch(
     () => route.path,
     (path) => {
-      if (path.startsWith('/organizations') && !expandedKeys.value.includes('/organizations-group')) {
-        expandedKeys.value = [...expandedKeys.value, '/organizations-group'];
+      const groupKey = routeGroupKey();
+      if (groupKey && !expandedKeys.value.includes(groupKey)) {
+        expandedKeys.value = [...expandedKeys.value, groupKey];
       }
     },
   );
@@ -118,4 +132,3 @@ export function useMenuOptions() {
     },
   };
 }
-

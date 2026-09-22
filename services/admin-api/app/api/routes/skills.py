@@ -15,6 +15,7 @@ from app.api.deps import get_current_admin_user
 from app.api.time_utils import utc_iso
 from app.core.config import settings
 from app.core.db import get_db
+from app.product.resource_lifecycle import notify_resource_created, notify_resource_deleted
 from app.services.skill_package_proxy import install_organization_skill_zip
 from app.services.skill_lifecycle import OrganizationSkillLifecycle
 from app.services.workflow_validation import validate_workflow_config
@@ -270,6 +271,11 @@ async def create_skill(payload: SkillPayload, current_user: dict = Depends(get_c
     await db.skills.insert_one(doc)
     if str(doc.get("type") or "") in {"writing_style", "workflow"}:
         await OrganizationSkillLifecycle().initialize(main_id=main_id, skill_id=doc["_id"], draft=doc)
+    try:
+        await notify_resource_created("skill", main_id, str(doc["_id"]))
+    except Exception:
+        await db.skills.delete_one({"_id": doc["_id"], "main_id": main_id})
+        raise
     return _serialize(await db.skills.find_one({"_id": doc["_id"], "main_id": main_id}) or doc)
 
 
@@ -452,12 +458,18 @@ async def install_skill_zip(
         raise HTTPException(status_code=413, detail={
             "code": "archive_too_large", "message": "Skill ZIP 不能超过 5 MiB",
         })
-    return install_organization_skill_zip(
+    result = install_organization_skill_zip(
         main_id=str(current_user.get("main_id") or "default"),
         filename=filename,
         content=content,
         confirm_replace=confirm_replace,
     )
+    skill_id = str(result.get("id") or "")
+    if skill_id:
+        await notify_resource_created(
+            "skill", str(current_user.get("main_id") or "default"), skill_id,
+        )
+    return result
 
 
 @router.get("/{skill_id}")
@@ -530,6 +542,7 @@ async def delete_skill(skill_id: str, current_user: dict = Depends(get_current_a
     if existing:
         package_ids = [str(existing.get("package_id") or ""), *[str(item) for item in existing.get("previous_package_ids") or []]]
         await db.skill_packages.delete_many({"_id": {"$in": [item for item in package_ids if item]}})
+    await notify_resource_deleted("skill", main_id, str(skill_id))
     return {"id": skill_id}
 
 

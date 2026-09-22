@@ -13,9 +13,9 @@ RUN npm ci --legacy-peer-deps
 COPY . .
 RUN npm run build
 
-FROM nginx:1.29.8-alpine
-
-RUN apk upgrade --no-cache
+# Keep this runtime aligned with user-web and gateway. The Debian/glibc variant
+# avoids the Alpine musl pwritev2 path rejected by older container hosts.
+FROM nginx:1.31.5-trixie
 
 COPY --from=build /app/dist /usr/share/nginx/html
 COPY nginx.conf /etc/nginx/conf.d/default.conf

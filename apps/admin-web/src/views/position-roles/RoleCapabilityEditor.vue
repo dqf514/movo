@@ -1,12 +1,10 @@
 <script setup lang="ts">
 import { t } from '@/composables/i18n';
 import { computed } from 'vue';
-import type { AgentCapabilityKey, PositionRoleDraft, RoleResource } from '@/api/positionRoles';
+import type { AgentCapabilityKey, PositionRoleDraft } from '@/api/positionRoles';
 
 const props = defineProps<{
   modelValue: PositionRoleDraft;
-  tools: RoleResource[];
-  skills: RoleResource[];
   disabled?: boolean;
 }>();
 const emit = defineEmits<{ 'update:modelValue': [value: PositionRoleDraft] }>();
@@ -25,9 +23,7 @@ const capabilityOptions: Array<{ key: AgentCapabilityKey; label: string; descrip
 ];
 const impactPreview = computed(() => {
   const enabled = capabilityOptions.filter(item => draft.value.capabilities[item.key]).map(item => item.label);
-  const toolText = draft.value.toolAccessMode === 'all' ? t('全部 MCP / 工具') : t('{count} 个 MCP / 工具', { count: draft.value.toolIds.length });
-  const skillText = draft.value.skillAccessMode === 'all' ? t('全部 Skill') : t('{count} 个 Skill', { count: draft.value.skillIds.length });
-  return t('{capabilities}；{tools}；{skills}', { capabilities: enabled.length ? enabled.join('、') : t('普通问答'), tools: toolText, skills: skillText });
+  return enabled.length ? enabled.join(t('列表分隔符')) : t('普通问答');
 });
 
 function setCapability(key: AgentCapabilityKey, enabled: boolean) {
@@ -56,24 +52,10 @@ function setCapability(key: AgentCapabilityKey, enabled: boolean) {
       </div>
     </section>
 
-    <n-divider />
-    <section>
-      <h3>{{ t('MCP 与工具') }}</h3>
-      <n-radio-group v-model:value="draft.toolAccessMode" :disabled="disabled">
-        <n-space><n-radio value="all">{{ t('全部当前及后续工具') }}</n-radio><n-radio value="selected">{{ t('仅选择的工具') }}</n-radio></n-space>
-      </n-radio-group>
-      <n-select v-if="draft.toolAccessMode === 'selected'" v-model:value="draft.toolIds" multiple filterable max-tag-count="responsive" :disabled="disabled" :options="tools.map(item => ({ label: `${item.name} · ${item.type.toUpperCase()}`, value: item.id }))" :placeholder="t('选择允许使用的 MCP 或工具')" />
-    </section>
-
-    <n-divider />
-    <section>
-      <h3>Skill</h3>
-      <n-radio-group v-model:value="draft.skillAccessMode" :disabled="disabled">
-        <n-space><n-radio value="all">{{ t('全部当前及后续 Skill') }}</n-radio><n-radio value="selected">{{ t('仅选择的 Skill') }}</n-radio></n-space>
-      </n-radio-group>
-      <n-select v-if="draft.skillAccessMode === 'selected'" v-model:value="draft.skillIds" multiple filterable max-tag-count="responsive" :disabled="disabled" :options="skills.map(item => ({ label: item.name, value: item.id }))" :placeholder="t('选择允许使用的 Skill')" />
-    </section>
-    <n-alert type="info" :bordered="false"><strong>{{ t('员工端影响预览：') }}</strong>{{ impactPreview }}</n-alert>
+    <n-alert type="info" :bordered="false">
+      <strong>{{ t('员工端影响预览：') }}</strong>{{ impactPreview }}
+      <div class="resource-note">{{ t('具体 Skill、MCP 与工具的使用对象，请在对应资源中配置。') }}</div>
+    </n-alert>
   </div>
 </template>
 
@@ -88,5 +70,6 @@ h3 { margin: 0 0 6px; color: #172033; font-size: 15px; }
 .capability-card__copy { display: grid; gap: 5px; }
 .capability-card small { color: #667085; line-height: 1.45; }
 section :deep(.n-select) { margin-top: 12px; }
+.resource-note { margin-top: 5px; color: #667085; font-size: 12px; }
 @media (max-width: 760px) { .capability-grid { grid-template-columns: 1fr; } }
 </style>

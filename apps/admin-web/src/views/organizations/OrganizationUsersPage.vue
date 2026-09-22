@@ -248,11 +248,6 @@
     </template>
   </n-modal>
 
-  <EmployeeCapabilityOverrideDialog
-    v-model:show="overrideDialogVisible"
-    :user-id="overrideTarget?.id || ''"
-    :user-name="overrideTarget?.name || ''"
-  />
   <BulkPositionRoleDialog
     v-model:show="bulkRoleDialogVisible"
     :user-ids="selectedUserIds"
@@ -415,22 +410,14 @@ import {
   type UserInviteLinkResult,
 } from '@/api/directory';
 import { listPositionRoles, type PositionRole } from '@/api/positionRoles';
-import EmployeeCapabilityOverrideDialog from './EmployeeCapabilityOverrideDialog.vue';
 import BulkPositionRoleDialog from './BulkPositionRoleDialog.vue';
 import EmployeeCredentialsFields from '@/components/directory/EmployeeCredentialsFields.vue';
 
 const message = useMessage();
 const dialog = useDialog();
 const saving = ref(false);
-const overrideDialogVisible = ref(false);
-const overrideTarget = ref<DirectoryUserItem | null>(null);
 const bulkRoleDialogVisible = ref(false);
 const selectedUserIds = ref<string[]>([]);
-
-function openCapabilityOverride(row: DirectoryUserItem) {
-  overrideTarget.value = row;
-  overrideDialogVisible.value = true;
-}
 
 async function handleBulkRolesSaved() {
   selectedUserIds.value = [];
@@ -645,7 +632,7 @@ const columns = computed<DataTableColumns<DirectoryUserItem>>(() => {
     {
       title: t('操作'),
       key: 'actions',
-      width: 360,
+      width: 280,
       render: (row) =>
         h('div', { class: 'action-row' }, [
           h(
@@ -655,14 +642,6 @@ const columns = computed<DataTableColumns<DirectoryUserItem>>(() => {
               onClick: () => openEditUser(row),
             },
             t('编辑'),
-          ),
-          h(
-            'button',
-            {
-              class: 'action-link',
-              onClick: () => openCapabilityOverride(row),
-            },
-            t('临时授权'),
           ),
           row.status === 'active'
             ? h(
@@ -693,7 +672,7 @@ const columns = computed<DataTableColumns<DirectoryUserItem>>(() => {
     },
   ];
 });
-const userTableScrollX = computed(() => 1490 + fieldDefs.value.filter((field) => field.enabled).length * 140);
+const userTableScrollX = computed(() => 1410 + fieldDefs.value.filter((field) => field.enabled).length * 140);
 
 const fieldColumns = computed<DataTableColumns<UserFieldDef>>(() => [
   { title: t('字段Key'), key: 'fieldKey' },
@@ -963,15 +942,8 @@ const inviteCapabilityPreview = computed(() => {
   selected.forEach(role => Object.entries(role.capabilities).forEach(([key, enabled]) => {
     if (enabled) capabilitySet.add(capabilityNames[key] ? t(capabilityNames[key]) : key);
   }));
-  const toolAll = selected.some(role => role.toolAccessMode === 'all');
-  const skillAll = selected.some(role => role.skillAccessMode === 'all');
-  const toolCount = new Set(selected.flatMap(role => role.toolIds)).size;
-  const skillCount = new Set(selected.flatMap(role => role.skillIds)).size;
   if (!selected.length) return '';
-  const capabilities = [...capabilitySet].join(t('列表分隔符')) || t('普通问答');
-  const tools = toolAll ? t('全部工具') : t('工具数量', { count: toolCount });
-  const skills = skillAll ? t('全部 Skill') : t('Skill数量', { count: skillCount });
-  return t('能力预览', { capabilities, tools, skills });
+  return [...capabilitySet].join(t('列表分隔符')) || t('普通问答');
 });
 
 function syncPrimaryRole(roleId: string) {

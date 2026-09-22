@@ -97,6 +97,9 @@
                       <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
                     </svg>
                   </n-button>
+                  <n-button v-if="skillAccessExtension" class="icon-only-btn" size="small" quaternary circle :title="t('使用权限')" @click.stop="openAccess(row)">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="7" r="4" /><path d="M5.5 21a6.5 6.5 0 0 1 13 0" /></svg>
+                  </n-button>
                   <n-button class="icon-only-btn delete-btn" size="small" quaternary circle :title="t('删除 Skill')" @click.stop="askDelete(row)">
                     <svg viewBox="0 0 24 24" aria-hidden="true">
                       <path d="M3 6h18" />
@@ -168,6 +171,10 @@
     <OrganizationSkillFeedback v-if="feedbackVisible && feedbackSkill" :key="feedbackSkill.id" :skill-id="feedbackSkill.id" />
   </n-modal>
 
+  <n-modal v-if="skillAccessExtension" v-model:show="accessVisible" preset="card" :title="t('{name} · 使用权限', { name: accessSkill?.name || 'Skill' })" style="width: min(760px, calc(100vw - 32px))">
+    <ResourceAccessExtensionPanel v-if="accessVisible && accessSkill" :resource-id="accessSkill.id" :extension="skillAccessExtension" />
+  </n-modal>
+
   <n-modal v-model:show="editVisible" preset="card" :title="t('编辑 Skill 基础信息')" style="width: 640px">
     <n-form ref="editFormRef" :model="editForm" :rules="editRules" label-placement="left" label-width="92">
       <n-form-item :label="t('技能名称')" path="name">
@@ -233,6 +240,8 @@ import { createSkill, deleteSkill, fetchSkills, setSkillEnabled, updateSkill, ty
 import SkillZipInstaller from './SkillZipInstaller.vue';
 import SkillPackageDetails from './SkillPackageDetails.vue';
 import OrganizationSkillFeedback from './OrganizationSkillFeedback.vue';
+import ResourceAccessExtensionPanel from '@/components/resources/ResourceAccessExtensionPanel.vue';
+import adminProductUiExtension from '@movo-admin-product-extension';
 
 const router = useRouter();
 const message = useMessage();
@@ -248,6 +257,9 @@ const detailsVisible = ref(false);
 const selectedPackage = ref<SkillItem | null>(null);
 const feedbackVisible = ref(false);
 const feedbackSkill = ref<SkillItem | null>(null);
+const skillAccessExtension = adminProductUiExtension.skillAccess;
+const accessVisible = ref(false);
+const accessSkill = ref<SkillItem | null>(null);
 const zipInstallerRef = ref<{ select: (file?: File) => void } | null>(null);
 
 const createVisible = ref(false);
@@ -385,6 +397,11 @@ function openSkill(row: SkillItem) {
 function openFeedback(row: SkillItem) {
   feedbackSkill.value = row;
   feedbackVisible.value = true;
+}
+
+function openAccess(row: SkillItem) {
+  accessSkill.value = row;
+  accessVisible.value = true;
 }
 
 function handlePageDrop(event: DragEvent) {

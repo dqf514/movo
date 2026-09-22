@@ -4,15 +4,22 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import re
 from typing import Any, Literal, Protocol
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 from app.enterprise_capabilities.runtime import InternalCapabilityCatalog
 from app.enterprise_capabilities.runtime.timeouts import MAX_CAPABILITY_EXECUTION_MS
 from app.services.external_tools import external_tool_registry
 from app.governance.position_policy import EmployeePolicyResolver
+from app.product.resource_access import filter_allowed_resource_ids
+
+from .mcp_schema import McpSchemaCompatibilityError, normalize_mcp_schema
+
+
+logger = logging.getLogger(__name__)
 
 
 class ToolProfileDefinition(BaseModel):
@@ -77,8 +84,13 @@ class ToolProfileCompiler:
     async def compile(self, *, tenant_id: str, user_id: str) -> tuple[ToolProfileDefinition, ...]:
         rows = await self._catalog.list_enabled(tenant_id, user_id)
         policy = await self._policy_resolver.resolve(tenant_id, user_id) if self._policy_resolver else None
-        if policy is not None:
-            rows = [row for row in rows if policy.allows_external_tool(str(row.get("id") or ""))]
+        allowed_external_ids = await filter_allowed_resource_ids(
+            "tool",
+            main_id=tenant_id,
+            user_id=user_id,
+            resource_ids=(str(row.get("id") or "") for row in rows),
+        )
+        rows = [row for row in rows if str(row.get("id") or "") in allowed_external_ids]
         definitions: list[ToolProfileDefinition] = []
         for row in rows:
             if str(row.get("type")) == "mcp":
@@ -165,14 +177,33 @@ class ToolProfileCompiler:
             destructive = annotations.get("destructiveHint") is True
             risk = "dangerous" if destructive else ("read" if read_only else "write")
             approval = bool(config.get("approvalRequired", config.get("approval_required", risk != "read")))
+            try:
+                input_schema = normalize_mcp_schema(
+                    discovered.get("inputSchema"), object_root=True, schema_name="inputSchema",
+                )
+                output_schema = normalize_mcp_schema(
+                    discovered.get("outputSchema"), object_root=False, schema_name="outputSchema",
+                )
+            except McpSchemaCompatibilityError as exc:
+                logger.warning(
+                    "mcp_tool_schema_incompatible tool_id=%s mcp_tool_name=%s error=%s",
+                    tool_id, native_name, str(exc),
+                )
+                continue
+            removed_paths = (*input_schema.removed_paths, *output_schema.removed_paths)
+            if removed_paths:
+                logger.info(
+                    "mcp_tool_schema_normalized tool_id=%s mcp_tool_name=%s removed_paths=%s",
+                    tool_id, native_name, ",".join(removed_paths),
+                )
             payload = {
                 "source_type": "mcp",
                 "external_tool_id": tool_id,
                 "mcp_tool_name": native_name,
                 "display_name": str(row.get("name") or "MCP")[:512],
                 "description": str(discovered.get("description") or self._description(row))[:4000],
-                "input_schema": self._json_schema(discovered.get("inputSchema"), object_root=True),
-                "output_schema": self._json_schema(discovered.get("outputSchema"), object_root=False),
+                "input_schema": input_schema.schema,
+                "output_schema": output_schema.schema,
                 # MCP outputSchema is a protocol-authored JSON Schema contract.
                 "output_validation": "strict",
                 "risk_level": risk,
@@ -180,11 +211,17 @@ class ToolProfileCompiler:
                 "required_scopes": ("tools:read",) if risk == "read" else ("tools:write",),
                 "timeout_ms": self._timeout_ms(config),
             }
-            result.append(ToolProfileDefinition(
-                name=self._name("mcp", tool_id, native_name),
-                version=self._version(payload),
-                **payload,
-            ))
+            try:
+                result.append(ToolProfileDefinition(
+                    name=self._name("mcp", tool_id, native_name),
+                    version=self._version(payload),
+                    **payload,
+                ))
+            except (ValidationError, TypeError, ValueError) as exc:
+                logger.warning(
+                    "mcp_tool_profile_invalid tool_id=%s mcp_tool_name=%s error=%s",
+                    tool_id, native_name, str(exc),
+                )
         return result
 
     @staticmethod
@@ -256,12 +293,6 @@ class ToolProfileCompiler:
         if node.get("type") == "null":
             return node
         return {"anyOf": [node, {"type": "null"}]}
-
-    @staticmethod
-    def _json_schema(value: Any, *, object_root: bool) -> dict[str, Any]:
-        if isinstance(value, dict) and value:
-            return json.loads(json.dumps(value, ensure_ascii=False, default=str))
-        return {"type": "object", "properties": {}, "additionalProperties": True} if object_root else {}
 
     @staticmethod
     def _description(row: dict[str, Any]) -> str:

@@ -16,6 +16,7 @@ from app.api.time_utils import utc_iso
 from app.api.tool_limits import validate_mcp_activation
 from app.core.config import settings
 from app.core.db import get_db
+from app.product.resource_lifecycle import notify_resource_created, notify_resource_deleted
 from app.services.organization_tools import (
     organization_tool_fields,
     organization_tool_query,
@@ -231,6 +232,11 @@ async def create_tool(payload: ToolPayload, current_user: dict = Depends(get_cur
         "updated_at": now,
     }
     await db.external_tools.insert_one(doc)
+    try:
+        await notify_resource_created("tool", main_id, str(doc["_id"]))
+    except Exception:
+        await db.external_tools.delete_one({"_id": doc["_id"], "main_id": main_id})
+        raise
     return _serialize(doc)
 
 
@@ -287,6 +293,7 @@ async def delete_tool(tool_id: str, current_user: dict = Depends(get_current_adm
     result = await db.external_tools.delete_one(organization_tool_query(main_id, _id=str(tool_id)))
     if not result.deleted_count:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="工具连接不存在")
+    await notify_resource_deleted("tool", main_id, str(tool_id))
     return {"id": tool_id}
 
 

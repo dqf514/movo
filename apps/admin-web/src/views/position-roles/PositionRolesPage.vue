@@ -5,9 +5,9 @@ import { NSpace, NTag, useDialog, useMessage, type DataTableColumns } from 'naiv
 import PageIntro from '@/components/PageIntro.vue';
 import RoleCapabilityEditor from './RoleCapabilityEditor.vue';
 import {
-  copyPositionRole, createPositionRole, deletePositionRole, listPositionRoles, roleResourceCatalog,
+  copyPositionRole, createPositionRole, deletePositionRole, listPositionRoles,
   setPositionRoleEnabled, updatePositionRole,
-  type PositionRole, type PositionRoleDraft, type RoleResource,
+  type PositionRole, type PositionRoleDraft,
 } from '@/api/positionRoles';
 
 const message = useMessage();
@@ -15,15 +15,12 @@ const dialog = useDialog();
 const loading = ref(false);
 const saving = ref(false);
 const roles = ref<PositionRole[]>([]);
-const tools = ref<RoleResource[]>([]);
-const skills = ref<RoleResource[]>([]);
 const editorVisible = ref(false);
 const editing = ref<PositionRole | null>(null);
 
 const emptyDraft = (): PositionRoleDraft => ({
   name: '', description: '', status: 'active',
   capabilities: { content_generation: true, image_generation: false, code_generation: false, browser_automation: false, internal_knowledge: true },
-  toolAccessMode: 'selected', toolIds: [], skillAccessMode: 'selected', skillIds: [],
 });
 const draft = ref<PositionRoleDraft>(emptyDraft());
 
@@ -32,17 +29,14 @@ const enabledSummary = computed(() => Object.entries(draft.value.capabilities).f
 async function load() {
   loading.value = true;
   try {
-    const [roleRows, resources] = await Promise.all([listPositionRoles(), roleResourceCatalog()]);
-    roles.value = roleRows;
-    tools.value = resources.tools;
-    skills.value = resources.skills;
+    roles.value = await listPositionRoles();
   } finally { loading.value = false; }
 }
 
 function openCreate() { editing.value = null; draft.value = emptyDraft(); editorVisible.value = true; }
 function openEdit(role: PositionRole) {
   editing.value = role;
-  draft.value = { name: role.name, description: role.description, status: role.status, capabilities: { ...role.capabilities }, toolAccessMode: role.toolAccessMode, toolIds: [...role.toolIds], skillAccessMode: role.skillAccessMode, skillIds: [...role.skillIds] };
+  draft.value = { name: role.name, description: role.description, status: role.status, capabilities: { ...role.capabilities } };
   editorVisible.value = true;
 }
 async function save() {
@@ -83,7 +77,6 @@ const labels: Record<string, string> = { content_generation: t('内容'), image_
 const columns: DataTableColumns<PositionRole> = [
   { title: t('岗位角色'), key: 'name', render: row => h('div', { class: 'role-name' }, [h('strong', row.name), row.protected ? h(NTag, { size: 'small', type: 'info', bordered: false }, { default: () => t('系统保障') }) : null, h('small', row.description || t('暂无说明'))]) },
   { title: t('已启用能力'), key: 'capabilities', render: row => h(NSpace, { size: 6 }, { default: () => Object.entries(row.capabilities).filter(([, enabled]) => enabled).map(([key]) => h(NTag, { size: 'small', bordered: false }, { default: () => labels[key] })) }) },
-  { title: t('资源范围'), key: 'resources', render: row => `${row.toolAccessMode === 'all' ? t('全部工具') : t('{count} 个工具', { count: row.toolIds.length })} · ${row.skillAccessMode === 'all' ? t('全部 Skill') : t('{count} 个 Skill', { count: row.skillIds.length })}` },
   { title: t('员工'), key: 'memberCount', width: 80 },
   { title: t('状态'), key: 'status', width: 100, render: row => h(NTag, { type: row.status === 'active' ? 'success' : 'default', bordered: false }, { default: () => row.status === 'active' ? t('启用') : t('停用') }) },
   { title: t('操作'), key: 'actions', width: 300, render: row => h('div', { class: 'action-row' }, [
@@ -110,7 +103,7 @@ onMounted(load);
         <n-form :model="draft" label-placement="top">
           <n-grid :cols="2" :x-gap="14"><n-grid-item><n-form-item :label="t('用户岗位角色名称')" required><n-input v-model:value="draft.name" /></n-form-item></n-grid-item><n-grid-item><n-form-item :label="t('状态')"><n-select v-model:value="draft.status" :options="[{ label: t('启用'), value: 'active' }, { label: t('停用'), value: 'disabled' }]" /></n-form-item></n-grid-item></n-grid>
           <n-form-item :label="t('说明')"><n-input v-model:value="draft.description" type="textarea" :rows="2" /></n-form-item>
-          <RoleCapabilityEditor v-model="draft" :tools="tools" :skills="skills" />
+          <RoleCapabilityEditor v-model="draft" />
         </n-form>
         <template #footer><div class="drawer-footer"><span>{{ t('已启用 {count} 项基础能力', { count: enabledSummary }) }}</span><n-space><n-button @click="editorVisible = false">{{ t('取消') }}</n-button><n-button type="primary" :loading="saving" @click="save">{{ t('保存') }}</n-button></n-space></div></template>
       </n-drawer-content>

@@ -25,6 +25,7 @@ from app.llm.image_model_runtime import (
 from app.llm.image_json_protocol import build_image_payload, image_endpoint, response_value
 from app.infrastructure.request_context import get_request_context
 from app.utils.oss_uploader import AliyunOSSUploader
+from app.product.extensions import get_product_extension
 
 logger = logging.getLogger(__name__)
 
@@ -136,7 +137,10 @@ class ConfiguredImageGenerationService:
         merged_output_spec = dict(get_request_context() or {})
         if isinstance(output_spec, dict):
             merged_output_spec.update(output_spec)
-        config, model_source = await self._resolve_image_model_config(output_spec=merged_output_spec)
+        config, model_source = await self._resolve_image_model_config(
+            output_spec=merged_output_spec,
+            user_id=user_id,
+        )
         if config is None:
             raise ModelConfigError(
                 "未配置可用的图片生成模型，请在管理后台的模型中心添加并启用 image_generation 模型"
@@ -204,6 +208,7 @@ class ConfiguredImageGenerationService:
         self,
         *,
         output_spec: dict[str, Any] | None,
+        user_id: str = "",
     ) -> tuple[dict[str, Any] | None, str]:
         merged_output_spec = dict(get_request_context() or {})
         if isinstance(output_spec, dict):
@@ -214,6 +219,14 @@ class ConfiguredImageGenerationService:
             or merged_output_spec.get("imageModelId")
             or ""
         ).strip()
+        policy = get_product_extension().model_access_policy
+        if policy is not None and user_id and user_id != "admin_model_test":
+            image_model_id = str(await policy.resolve_model_id(
+                main_id=main_id,
+                user_id=user_id,
+                model_id=image_model_id or None,
+                capability="image_generation",
+            ) or "")
         if image_model_id:
             config = await get_image_model_config(image_model_id, main_id)
             if config is None:

@@ -201,6 +201,12 @@
             />
           </n-grid-item>
         </n-grid>
+        <ModelAccessExtensionPanel
+          v-if="modelAccess.enabled && isUserSelectableModel"
+          v-model="modelAccessValue"
+          :loading="modelAccessLoading"
+          class="model-access-panel"
+        />
       </n-form>
 
       <aside v-if="editorMode === 'edit'" class="test-panel">
@@ -289,6 +295,8 @@ import {
 import { fetchTrafficAllocationOverview } from '@/api/traffic-allocations';
 import { capabilityLabel } from '@/components/models/capabilityLabels';
 import { providerLabel } from '@/components/models/providerLabels';
+import ModelAccessExtensionPanel from '@/components/models/ModelAccessExtensionPanel.vue';
+import { useModelAccessExtension } from '@/composables/useModelAccessExtension';
 
 
 interface ModelForm extends ModelInstancePayload {
@@ -313,6 +321,9 @@ const testPrompt = ref(t('测试模型默认提示'));
 const testResultText = ref(t('测试模型未保存'));
 const testResultType = ref<'idle' | 'success' | 'failed'>('idle');
 const testImageUrl = ref('');
+const modelAccess = useModelAccessExtension();
+const modelAccessValue = modelAccess.value;
+const modelAccessLoading = modelAccess.loading;
 
 const filters = ref({
   keyword: '',
@@ -367,6 +378,7 @@ const providerMap = computed(() => new Map(providers.value.map((item) => [item.i
 const currentProvider = computed(() => providerMap.value.get(form.value.providerId));
 const isAzureProvider = computed(() => currentProvider.value?.providerType === 'azure_openai');
 const hasImageCapability = computed(() => form.value.capabilities.includes('image_generation'));
+const isUserSelectableModel = computed(() => form.value.capabilities.some((item) => ['chat', 'text', 'image_generation'].includes(item)));
 const editorTitle = computed(() => (editorMode.value === 'create' ? t('新增模型配置') : t('模型配置详情')));
 const apiKeyPlaceholder = computed(() =>
   editorMode.value === 'create' ? t('请输入 API Key') : t('留空则保留当前 Key'),
@@ -487,6 +499,7 @@ function openCreate() {
     form.value.displayName = defaultProviderDisplayName(firstProvider);
   }
   resetTestState(t('新增配置保存后可测试。'));
+  modelAccess.reset();
   editorVisible.value = true;
 }
 
@@ -510,10 +523,20 @@ function openEdit(row: ModelInstanceItem) {
     isDefault: false,
   };
   resetTestState(t('可在右侧测试当前已保存的配置。'));
+  if (row.capabilities.some((item) => ['chat', 'text', 'image_generation'].includes(item))) {
+    void modelAccess.load(row.id).catch((error) => {
+      message.error(readError(error, t('加载失败')));
+    });
+  }
   editorVisible.value = true;
 }
 
 async function saveModel() {
+  const accessValidation = isUserSelectableModel.value ? modelAccess.validate() : null;
+  if (accessValidation) {
+    message.warning(t(accessValidation));
+    return;
+  }
   if (!form.value.providerId || !form.value.displayName.trim() || !form.value.modelName.trim()) {
     message.warning(t('请补齐供应商、显示名称和模型 ID'));
     return;
@@ -556,6 +579,19 @@ async function saveModel() {
     const saved = editorMode.value === 'create'
       ? await createModelInstance(payload)
       : await updateModelInstance(form.value.id, payload);
+    try {
+      if (isUserSelectableModel.value) {
+        await modelAccess.save(saved.id);
+      }
+    } catch (error) {
+      editorMode.value = 'edit';
+      form.value.id = saved.id;
+      form.value.apiKey = '';
+      form.value.apiKeyMasked = saved.apiKeyMasked;
+      await reload();
+      message.error(`${t('模型已保存，但使用权限保存失败')}：${readError(error, t('保存失败'))}`);
+      return;
+    }
     await reload();
     openEdit(saved);
     testResultText.value = t('模型配置已保存，可以继续测试。');

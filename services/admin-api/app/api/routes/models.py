@@ -43,6 +43,7 @@ from app.services.image_model_configuration import (
     serialize_image_settings,
 )
 from app.services.model_image_connectivity import run_saved_image_model_test
+from app.product.extensions import get_admin_product_extension
 
 router = APIRouter()
 
@@ -235,6 +236,14 @@ async def post_model_instance(
     created = await find_instance_by_id(instance_id, main_id)
     if created is None:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="模型配置创建失败")
+    try:
+        for callback in get_admin_product_extension().model_created:
+            result = callback(main_id, str(instance_id))
+            if hasattr(result, "__await__"):
+                await result
+    except Exception:
+        await delete_instance(str(instance_id), main_id)
+        raise
     providers = await list_providers()
     provider_map = {str(item["_id"]): item for item in providers}
     return _format_instance(created, provider_map)
@@ -314,6 +323,10 @@ async def remove_model_instance(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="模型配置ID无效") from exc
     if not ok:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="模型配置不存在")
+    for callback in get_admin_product_extension().model_deleted:
+        result = callback(main_id, instance_id)
+        if hasattr(result, "__await__"):
+            await result
     return {"success": True}
 
 

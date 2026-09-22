@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from app.dsh_runtime.profile.skills import MongoSkillCatalog
 from app.dsh_runtime.profile.skills.resolver import require_selected_skill
 from app.governance.audit import record_position_policy_event
-from app.governance.position_policy import MongoEmployeePolicyResolver
+from app.product.resource_access import resource_is_allowed
 
 
 @dataclass(frozen=True)
@@ -24,8 +24,9 @@ async def admit_skill_selection(
     selected = str(selected_skill_id or "").strip()
     if not selected:
         return TurnSkillSelection()
-    policy = await MongoEmployeePolicyResolver().resolve(tenant_id, user_id)
-    if not policy.allows_skill(selected):
+    if not await resource_is_allowed(
+        "skill", main_id=tenant_id, user_id=user_id, resource_id=selected.removeprefix("org_skill:")
+    ):
         await record_position_policy_event(
             tenant_id=tenant_id,
             user_id=user_id,
@@ -33,9 +34,9 @@ async def admit_skill_selection(
             target="skill",
             details={"skill_id": selected},
         )
-        raise PermissionError("当前岗位未开通该 Skill")
+        raise PermissionError("该 Skill 未向当前用户开放")
     kind, _row = await require_selected_skill(
-        MongoSkillCatalog(MongoEmployeePolicyResolver()),
+        MongoSkillCatalog(),
         skill_id=selected,
         tenant_id=tenant_id,
         user_id=user_id,

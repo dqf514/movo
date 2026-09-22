@@ -15,25 +15,16 @@ export type PositionRole = {
   protected: boolean;
   systemKey: string;
   capabilities: Record<AgentCapabilityKey, boolean>;
-  toolAccessMode: 'all' | 'selected';
-  toolIds: string[];
-  skillAccessMode: 'all' | 'selected';
-  skillIds: string[];
   memberCount: number;
   updatedAt: string;
 };
 
 export type PositionRoleDraft = Omit<PositionRole, 'id' | 'protected' | 'systemKey' | 'memberCount' | 'updatedAt'>;
-export type RoleResource = { id: string; name: string; type: string };
 export type CapabilityOverride = {
   id: string;
   status: 'active' | 'revoked' | 'expired';
   allowCapabilities: AgentCapabilityKey[];
   denyCapabilities: AgentCapabilityKey[];
-  allowToolIds: string[];
-  denyToolIds: string[];
-  allowSkillIds: string[];
-  denySkillIds: string[];
   effectiveAt: string;
   expiresAt: string;
   reason: string;
@@ -44,10 +35,6 @@ export type CapabilityOverride = {
 export type CapabilityOverrideDraft = Omit<CapabilityOverride, 'id' | 'status' | 'createdBy' | 'createdAt'>;
 export async function listPositionRoles(): Promise<PositionRole[]> {
   return (await apiClient.get('/api/position-roles')).data;
-}
-
-export async function roleResourceCatalog(): Promise<{ tools: RoleResource[]; skills: RoleResource[] }> {
-  return (await apiClient.get('/api/position-roles/catalog/resources')).data;
 }
 
 export async function createPositionRole(payload: PositionRoleDraft): Promise<PositionRole> {

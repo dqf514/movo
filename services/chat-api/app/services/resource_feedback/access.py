@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 from app.core.db import get_db
 from app.core.tenant import resolve_main_id
-from app.governance.position_policy import MongoEmployeePolicyResolver
+from app.product.resource_access import resource_is_allowed
 
 
 @dataclass(frozen=True)
@@ -45,8 +45,9 @@ class FeedbackAccessResolver:
 
     async def _organization_skill(self, main_id: str, user_id: str, resource_id: str) -> FeedbackSubject:
         raw_id = resource_id.removeprefix("org_skill:")
-        policy = await MongoEmployeePolicyResolver().resolve(main_id, user_id)
-        if not policy.allows_skill(raw_id):
+        if not await resource_is_allowed(
+            "skill", main_id=main_id, user_id=user_id, resource_id=raw_id
+        ):
             raise PermissionError("feedback_forbidden")
         db = get_db()
         row = await db.skills.find_one({"_id": raw_id, "main_id": main_id})

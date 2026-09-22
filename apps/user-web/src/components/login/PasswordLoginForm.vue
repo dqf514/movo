@@ -45,23 +45,29 @@ async function submit() {
   }
 
   isSubmitting.value = true
-  const result = pendingSelection.value
-    ? await selectTenantAndLogin(challengeToken.value, selectedMainId.value)
-    : await loginWithPassword(normalizedUsername, password.value)
-  isSubmitting.value = false
+  try {
+    const result = pendingSelection.value
+      ? await selectTenantAndLogin(challengeToken.value, selectedMainId.value)
+      : await loginWithPassword(normalizedUsername, password.value)
 
-  if (result.requiresTenantSelection) {
-    challengeToken.value = result.challengeToken || ''
-    tenantCandidates.value = result.tenantCandidates || []
-    selectedMainId.value = tenantCandidates.value[0]?.mainId || ''
-    errorMessage.value = result.message || t('api.auth.select_org')
-    return
+    if (result.requiresTenantSelection) {
+      challengeToken.value = result.challengeToken || ''
+      tenantCandidates.value = result.tenantCandidates || []
+      selectedMainId.value = tenantCandidates.value[0]?.mainId || ''
+      errorMessage.value = result.message || t('api.auth.select_org')
+      return
+    }
+    if (!result.ok || !result.token) {
+      errorMessage.value = result.message || t('api.auth.login_failed')
+      return
+    }
+    emit('login-success', { token: result.token, username: normalizedUsername, profile: result.profile })
+  } catch (error: any) {
+    console.error('[auth] password login completion failed', error)
+    errorMessage.value = error?.message || t('api.auth.login_failed')
+  } finally {
+    isSubmitting.value = false
   }
-  if (!result.ok || !result.token) {
-    errorMessage.value = result.message || t('api.auth.login_failed')
-    return
-  }
-  emit('login-success', { token: result.token, username: normalizedUsername, profile: result.profile })
 }
 </script>
 

@@ -15,16 +15,6 @@ class OrganizationService:
         return [{"id": "org_skill:org-1", "name": "Org", "enabled": True, "visibility": "organization"}]
 
 
-class DenyOrganizationPolicy:
-    def allows_skill(self, skill_id):
-        return False
-
-
-class PolicyResolver:
-    async def resolve(self, tenant_id, user_id):
-        return DenyOrganizationPolicy()
-
-
 class PackagePersonalService:
     async def list_skills(self, user_id, main_id):
         return [{
@@ -63,10 +53,13 @@ class FakeDatabase:
     skill_packages = PackageCollection()
 
 
-def test_personal_skill_is_not_filtered_by_organization_position_policy(monkeypatch):
+def test_personal_skill_is_not_filtered_by_organization_resource_policy(monkeypatch):
     monkeypatch.setattr(catalog_module, "user_skill_service", PersonalService())
     monkeypatch.setattr(catalog_module, "organization_skill_adapter", OrganizationService())
-    rows = asyncio.run(catalog_module.MongoSkillCatalog(PolicyResolver()).list_enabled("tenant-a", "user-a"))
+    async def deny_organization(*args, **kwargs):
+        return set()
+    monkeypatch.setattr(catalog_module, "filter_allowed_resource_ids", deny_organization)
+    rows = asyncio.run(catalog_module.MongoSkillCatalog().list_enabled("tenant-a", "user-a"))
     assert [row["id"] for row in rows] == ["personal-1"]
 
 

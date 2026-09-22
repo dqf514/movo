@@ -1,9 +1,40 @@
 import type { Component } from 'vue'
+import type { RouteRecordRaw } from 'vue-router'
+
+export interface AdminProductMenuGroup {
+  key: string
+  label: string
+  icon?: Component
+}
+
+export interface ModelAccessUiExtension {
+  component: Component
+  createValue: () => unknown
+  load: (modelId: string) => Promise<unknown>
+  save: (modelId: string, value: unknown) => Promise<void>
+  validate?: (value: unknown) => string | null
+}
+
+export interface ResourceAccessUiExtension {
+  component: Component
+  createValue: () => unknown
+  load: (resourceId: string) => Promise<unknown>
+  save: (resourceId: string, value: unknown) => Promise<void>
+  validate?: (value: unknown) => string | null
+}
 
 export interface AdminProductUiExtension {
   extensionId: string
+  productEditionLabel?: string
+  productEditionTagType?: 'default' | 'error' | 'info' | 'success' | 'warning'
+  dashboardEditionBadge?: Component
   dashboardBillingActions?: Component
   knowledgeDirectoryPermissions?: Component
   knowledgeDocumentPermissions?: Component
   shortcutSettingsExtension?: Component
+  modelAccess?: ModelAccessUiExtension
+  skillAccess?: ResourceAccessUiExtension
+  toolAccess?: ResourceAccessUiExtension
+  menuGroups?: AdminProductMenuGroup[]
+  routes?: RouteRecordRaw[]
 }
